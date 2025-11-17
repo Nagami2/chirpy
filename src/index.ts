@@ -5,6 +5,8 @@ import { apiConfig } from "./config.js";
 
 import { ValidationError, NotFoundError } from "./errors.js";
 
+import { createUser } from "./db/queries/users.js";
+
 const app = express();
 const PORT = 8080;
 
@@ -132,6 +134,18 @@ app.post("/admin/reset", handlerReset);
 
 // the error handler must be registered LAST
 app.use(errorMiddleware);
+
+//TEMP: test database connection
+void (async () => {
+  try {
+    const newUser = await createUser({
+      email: `test_${Date.now()}@example.com`, // Generate a unique email
+    });
+    console.log("✅ Database Connected! Created user:", newUser);
+  } catch (err) {
+    console.error("❌ Database Error:", err);
+  }
+})();
 
 //listen port 8080
 app.listen(8080, () => {
