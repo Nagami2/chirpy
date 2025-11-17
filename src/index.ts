@@ -6,6 +6,7 @@ import { apiConfig } from "./config.js";
 const app = express();
 const PORT = 8080;
 
+// registering JSON middleware
 app.use(express.json());
 
 // --- defining middleware ---
@@ -71,34 +72,15 @@ const handlerReadiness = (req: Request, res: Response) => {
 
 // --- validate chirp handler ---
 const handlerValidateChirp = (req: Request, res: Response) => {
-  let body = "";
-  // collect the data chunks
-  req.on("data", (chunk) => {
-    body += chunk;
-  });
+  // as the app uses express.json() we can read req.body directly!
+  const chirp = req.body;
 
-  // when data stream is finished, process it
-  req.on("end", () => {
-    try {
-      const parsedBody = JSON.parse(body);
-      // check for the 140 chars validation
-      if (parsedBody.body.length > 140) {
-        res.status(400);
-        res.set("Content-Type", "application/json");
-        res.send(JSON.stringify({ error: "Chirp is too long" }));
-        return;
-      }
-      //if valid chirp
-      res.status(200);
-      res.set("Content-Type", "application/json");
-      res.send(JSON.stringify({ valid: true }));
-    } catch (error) {
-      // if JSON.parse fails or something else goes wrong
-      res.status(400);
-      res.set("Content-Type", "application/json");
-      res.send(JSON.stringify({ error: "something went wrong" }));
-    }
-  });
+  if (chirp.body && chirp.body.length > 140) {
+    res.status(400).json({ error: "Chirp is too long" });
+    return;
+  }
+
+  res.status(200).json({ valid: true });
 };
 
 // --- register routes ---
