@@ -1,9 +1,31 @@
 import express from "express";
 
-import { Request, Response } from "express";
+import { Request, Response, NextFunction } from "express";
 
 const app = express();
 const PORT = 8080;
+
+// --- defining middleware ---
+const middlewareLogResponses = (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  //.on('finish') waits until the response is fully sent to the user
+  res.on("finish", () => {
+    //check if status is "Non-OK" (400 or higher)
+    if (res.statusCode >= 400) {
+      console.log(
+        `[NON-OK] ${req.method} ${req.url} - Status: ${res.statusCode}`,
+      );
+    }
+  });
+  // call next()
+  next();
+};
+
+//register the middleware
+app.use(middlewareLogResponses);
 
 // --- custom handlers ---
 const handlerReadiness = (req: Request, res: Response) => {
@@ -13,9 +35,7 @@ const handlerReadiness = (req: Request, res: Response) => {
 };
 
 app.get("/healthz", handlerReadiness);
-
-//updated static files path
-app.use(express.static("."));
+app.use("/app", express.static("./src/app"));
 
 //listen port 8080
 app.listen(8080, () => {
