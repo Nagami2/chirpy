@@ -62,13 +62,14 @@ const handlerReadiness = (req: Request, res: Response) => {
 
 // --- register routes ---
 // apply the increment middleware to the /app path FIRST
+// the website (remains at /app)
 app.use("/app", middlewareMetricsInc);
-
 app.use("/app", express.static("./src/app"));
-app.get("/metrics", handlerMetrics);
-app.get("/reset", handlerReset);
 
-app.get("/healthz", handlerReadiness);
+// the API (moved to /api namespace)
+app.get("/api/metrics", handlerMetrics);
+app.get("/api/reset", handlerReset);
+app.get("/api/healthz", handlerReadiness);
 
 //listen port 8080
 app.listen(8080, () => {
