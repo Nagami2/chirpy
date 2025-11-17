@@ -1,6 +1,7 @@
 import express from "express";
 
 import { Request, Response, NextFunction } from "express";
+import { apiConfig } from "./config.js";
 
 const app = express();
 const PORT = 8080;
@@ -27,15 +28,47 @@ const middlewareLogResponses = (
 //register the middleware
 app.use(middlewareLogResponses);
 
+// metrics middleware, this function runs before fileserver handles the Request
+const middlewareMetricsInc = (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  apiConfig.fileserverHits++;
+  next();
+};
+
 // --- custom handlers ---
+// --- metrics handler (GET /metrics) ---
+const handlerMetrics = (req: Request, res: Response) => {
+  res.status(200);
+  res.set("Content-Type", "text/plain; charset=utf-8");
+  res.send(`Hits: ${apiConfig.fileserverHits}`);
+};
+
+// --- reset metrics handler (GET /reset) ---
+const handlerReset = (req: Request, res: Response) => {
+  apiConfig.fileserverHits = 0;
+  res.status(200);
+  res.set("Content-Type", "text/plain; charset=utf-8");
+  res.send("Reser OK");
+};
+
 const handlerReadiness = (req: Request, res: Response) => {
   res.status(200);
   res.set("Content-Type", "text/plain; charset=utf-8"); // set the header
   res.send("OK"); // send the body text
 };
 
-app.get("/healthz", handlerReadiness);
+// --- register routes ---
+// apply the increment middleware to the /app path FIRST
+app.use("/app", middlewareMetricsInc);
+
 app.use("/app", express.static("./src/app"));
+app.get("/metrics", handlerMetrics);
+app.get("/reset", handlerReset);
+
+app.get("/healthz", handlerReadiness);
 
 //listen port 8080
 app.listen(8080, () => {
