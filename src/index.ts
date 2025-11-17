@@ -41,6 +41,17 @@ const middlewareMetricsInc = (
   next();
 };
 
+// error hanlder middleware
+const errorMiddleware = (
+  err: Error,
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  console.log(err);
+  res.status(500).json({ error: "Something went wrong on our end" });
+};
+
 // --- custom handlers ---
 // --- metrics handler (GET /metrics) ---
 const handlerMetrics = (req: Request, res: Response) => {
@@ -71,29 +82,31 @@ const handlerReadiness = (req: Request, res: Response) => {
 };
 
 // --- validate chirp handler ---
-const handlerValidateChirp = (req: Request, res: Response) => {
-  // as the app uses express.json() we can read req.body directly!
-  const chirp = req.body;
-
-  if (chirp.body && chirp.body.length > 140) {
-    res.status(400).json({ error: "Chirp is too long" });
-    return;
-  }
-
-  // define forbidden words
-  const badWords = ["kerfuffle", "sharbert", "formax"];
-
-  const words = chirp.body.split(" ");
-  const cleanedWords = words.map((word: string) => {
-    const lowerCaseWord = word.toLowerCase();
-    if (badWords.includes(lowerCaseWord)) {
-      return "****";
+const handlerValidateChirp = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const chirp = req.body;
+    if (chirp.body && chirp.body.length > 140) {
+      throw new Error("chirp is too long"); // throw new error
     }
-    return word;
-  });
 
-  const cleanedBody = cleanedWords.join(" ");
-  res.status(200).json({ cleanedBody: cleanedBody });
+    const badWords = ["kerfuffle", "sharbert", "formax"];
+    const words = chirp.body.split(" ");
+    const cleanedWords = words.map((word: string) => {
+      const lowerCaseWord = word.toLowerCase();
+      if (badWords.includes(lowerCaseWord)) {
+        return "****";
+      }
+      return word;
+    });
+    const cleanedBody = cleanedWords.join(" ");
+    res.status(200).json({ cleanedBody: cleanedBody });
+  } catch (err) {
+    next(err); // pass the error to global error handler
+  }
 };
 
 // --- register routes ---
@@ -109,6 +122,9 @@ app.post("/api/validate_chirp", handlerValidateChirp);
 // the admin namespace
 app.get("/admin/metrics", handlerMetrics);
 app.post("/admin/reset", handlerReset);
+
+// the error handler must be registered LAST
+app.use(errorMiddleware);
 
 //listen port 8080
 app.listen(8080, () => {
