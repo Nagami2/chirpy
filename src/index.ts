@@ -5,7 +5,9 @@ import { apiConfig } from "./config.js";
 
 import { ValidationError, NotFoundError } from "./errors.js";
 
-import { createUser } from "./db/queries/users.js";
+import { drizzle } from "drizzle-orm/postgres-js";
+import { migrate } from "drizzle-orm/postgres-js/migrator";
+import postgres from "postgres";
 
 const app = express();
 const PORT = 8080;
@@ -135,19 +137,28 @@ app.post("/admin/reset", handlerReset);
 // the error handler must be registered LAST
 app.use(errorMiddleware);
 
-//TEMP: test database connection
-void (async () => {
+// automatic migrations
+// Move your app.listen logic inside this setup function
+const startServer = async () => {
   try {
-    const newUser = await createUser({
-      email: `test_${Date.now()}@example.com`, // Generate a unique email
-    });
-    console.log("✅ Database Connected! Created user:", newUser);
-  } catch (err) {
-    console.error("❌ Database Error:", err);
-  }
-})();
+    // 1. Create a specialized connection just for migrations
+    // max: 1 means we only need one connection for this quick task
+    const migrationClient = postgres(apiConfig.dbURL, { max: 1 });
 
-//listen port 8080
-app.listen(8080, () => {
-  console.log(`Server is running at http://localhost:${PORT}`);
-});
+    // 2. Run the migration
+    console.log("⏳ Running database migrations...");
+    await migrate(drizzle(migrationClient), { migrationsFolder: "./drizzle" });
+    console.log("✅ Migrations completed successfully!");
+
+    // 3. Start the server ONLY after migrations succeed
+    app.listen(PORT, () => {
+      console.log(`Server is running at http://localhost:${PORT}`);
+    });
+  } catch (err) {
+    console.error("❌ Migration failed. Server will not start.", err);
+    process.exit(1); // Kill the process if DB is broken
+  }
+};
+
+// Call the function to start everything
+startServer();
