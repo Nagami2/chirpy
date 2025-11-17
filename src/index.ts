@@ -6,6 +6,8 @@ import { apiConfig } from "./config.js";
 const app = express();
 const PORT = 8080;
 
+app.use(express.json());
+
 // --- defining middleware ---
 const middlewareLogResponses = (
   req: Request,
@@ -67,6 +69,38 @@ const handlerReadiness = (req: Request, res: Response) => {
   res.send("OK"); // send the body text
 };
 
+// --- validate chirp handler ---
+const handlerValidateChirp = (req: Request, res: Response) => {
+  let body = "";
+  // collect the data chunks
+  req.on("data", (chunk) => {
+    body += chunk;
+  });
+
+  // when data stream is finished, process it
+  req.on("end", () => {
+    try {
+      const parsedBody = JSON.parse(body);
+      // check for the 140 chars validation
+      if (parsedBody.body.length > 140) {
+        res.status(400);
+        res.set("Content-Type", "application/json");
+        res.send(JSON.stringify({ error: "Chirp is too long" }));
+        return;
+      }
+      //if valid chirp
+      res.status(200);
+      res.set("Content-Type", "application/json");
+      res.send(JSON.stringify({ valid: true }));
+    } catch (error) {
+      // if JSON.parse fails or something else goes wrong
+      res.status(400);
+      res.set("Content-Type", "application/json");
+      res.send(JSON.stringify({ error: "something went wrong" }));
+    }
+  });
+};
+
 // --- register routes ---
 // apply the increment middleware to the /app path FIRST
 // the website (remains at /app)
@@ -75,6 +109,7 @@ app.use("/app", express.static("./src/app"));
 
 // the API (moved to /api namespace)
 app.get("/api/healthz", handlerReadiness);
+app.post("/api/validate_chirp", handlerValidateChirp);
 
 // the admin namespace
 app.get("/admin/metrics", handlerMetrics);
