@@ -42,8 +42,15 @@ const middlewareMetricsInc = (
 // --- metrics handler (GET /metrics) ---
 const handlerMetrics = (req: Request, res: Response) => {
   res.status(200);
-  res.set("Content-Type", "text/plain; charset=utf-8");
-  res.send(`Hits: ${apiConfig.fileserverHits}`);
+  res.set("Content-Type", "text/html; charset=utf-8");
+  res.send(`
+    <html>
+      <body>
+        <h1>Welcome, Chirpy Admin</h1>
+        <p>CHirpy has been visited ${apiConfig.fileserverHits} times! </p>
+      </body>
+    </html>
+  `);
 };
 
 // --- reset metrics handler (GET /reset) ---
@@ -67,9 +74,11 @@ app.use("/app", middlewareMetricsInc);
 app.use("/app", express.static("./src/app"));
 
 // the API (moved to /api namespace)
-app.get("/api/metrics", handlerMetrics);
-app.get("/api/reset", handlerReset);
 app.get("/api/healthz", handlerReadiness);
+
+// the admin namespace
+app.get("/admin/metrics", handlerMetrics);
+app.post("/admin/reset", handlerReset);
 
 //listen port 8080
 app.listen(8080, () => {
