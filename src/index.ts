@@ -3,6 +3,8 @@ import express from "express";
 import { Request, Response, NextFunction } from "express";
 import { apiConfig } from "./config.js";
 
+import { ValidationError, NotFoundError } from "./errors.js";
+
 const app = express();
 const PORT = 8080;
 
@@ -48,8 +50,14 @@ const errorMiddleware = (
   res: Response,
   next: NextFunction,
 ) => {
-  console.log(err);
-  res.status(500).json({ error: "Something went wrong on our end" });
+  if (err instanceof ValidationError) {
+    res.status(400).json({ error: err.message });
+  } else if (err instanceof NotFoundError) {
+    res.status(404).json({ error: "Not Found" });
+  } else {
+    console.log(err); // log it for the developer
+    res.status(500).json({ error: "Internal server error" });
+  }
 };
 
 // --- custom handlers ---
@@ -70,15 +78,14 @@ const handlerMetrics = (req: Request, res: Response) => {
 // --- reset metrics handler (GET /reset) ---
 const handlerReset = (req: Request, res: Response) => {
   apiConfig.fileserverHits = 0;
-  res.status(200);
-  res.set("Content-Type", "text/plain; charset=utf-8");
-  res.send("Reser OK");
+  res
+    .status(200)
+    .set("Content-Type", "text/plain; charset=utf-8")
+    .send("Reser OK");
 };
 
 const handlerReadiness = (req: Request, res: Response) => {
-  res.status(200);
-  res.set("Content-Type", "text/plain; charset=utf-8"); // set the header
-  res.send("OK"); // send the body text
+  res.status(200).set("Content-Type", "text/plain; charset=utf-8").send("OK"); // send the body text
 };
 
 // --- validate chirp handler ---
@@ -90,7 +97,7 @@ const handlerValidateChirp = async (
   try {
     const chirp = req.body;
     if (chirp.body && chirp.body.length > 140) {
-      throw new Error("chirp is too long"); // throw new error
+      throw new ValidationError("chirp is too long, max length is 140"); // throw new error
     }
 
     const badWords = ["kerfuffle", "sharbert", "formax"];
