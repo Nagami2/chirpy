@@ -80,7 +80,20 @@ const handlerValidateChirp = (req: Request, res: Response) => {
     return;
   }
 
-  res.status(200).json({ valid: true });
+  // define forbidden words
+  const badWords = ["kerfuffle", "sharbert", "formax"];
+
+  const words = chirp.body.split(" ");
+  const cleanedWords = words.map((word: string) => {
+    const lowerCaseWord = word.toLowerCase();
+    if (badWords.includes(lowerCaseWord)) {
+      return "****";
+    }
+    return word;
+  });
+
+  const cleanedBody = cleanedWords.join(" ");
+  res.status(200).json({ cleanedBody: cleanedBody });
 };
 
 // --- register routes ---
