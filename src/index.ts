@@ -3,11 +3,18 @@ import express from "express";
 import { Request, Response, NextFunction } from "express";
 import { apiConfig } from "./config.js";
 
-import { ValidationError, NotFoundError } from "./errors.js";
+import { ValidationError, NotFoundError, ForbiddenError } from "./errors.js";
 
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
+
+import { createUser, deleteAllUsers } from "./db/queries/users.js";
+import {
+  createChirp,
+  getAllChirps,
+  getChirpById,
+} from "./db/queries/chirps.js";
 
 const app = express();
 const PORT = 8080;
@@ -79,44 +86,132 @@ const handlerMetrics = (req: Request, res: Response) => {
   `);
 };
 
-// --- reset metrics handler (GET /reset) ---
-const handlerReset = (req: Request, res: Response) => {
-  apiConfig.fileserverHits = 0;
-  res
-    .status(200)
-    .set("Content-Type", "text/plain; charset=utf-8")
-    .send("Reser OK");
+// --- updated reset handler to delete all users ---
+const handlerReset = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    // Safety Check: Only allow this in "dev" environment
+    if (apiConfig.platform !== "dev") {
+      throw new ForbiddenError("Reset not allowed in this environment");
+    }
+
+    // 1. Delete the users from the DB
+    await deleteAllUsers();
+
+    // 2. Reset the metrics counter
+    apiConfig.fileserverHits = 0;
+
+    res
+      .status(200)
+      .set("Content-Type", "text/plain; charset=utf-8")
+      .send("Reset OK");
+  } catch (err) {
+    next(err);
+  }
 };
 
 const handlerReadiness = (req: Request, res: Response) => {
   res.status(200).set("Content-Type", "text/plain; charset=utf-8").send("OK"); // send the body text
 };
 
-// --- validate chirp handler ---
-const handlerValidateChirp = async (
+// create user handler
+const handlerCreateUser = async (
   req: Request,
   res: Response,
   next: NextFunction,
 ) => {
   try {
-    const chirp = req.body;
-    if (chirp.body && chirp.body.length > 140) {
-      throw new ValidationError("chirp is too long, max length is 140"); // throw new error
+    const { email } = req.body;
+    // Simple check to ensure email exists
+    if (!email) {
+      // You can just respond with 400 or throw a ValidationError
+      res.status(400).json({ error: "Email is required" });
+      return;
     }
 
-    const badWords = ["kerfuffle", "sharbert", "formax"];
-    const words = chirp.body.split(" ");
-    const cleanedWords = words.map((word: string) => {
-      const lowerCaseWord = word.toLowerCase();
-      if (badWords.includes(lowerCaseWord)) {
-        return "****";
-      }
-      return word;
-    });
-    const cleanedBody = cleanedWords.join(" ");
-    res.status(200).json({ cleanedBody: cleanedBody });
+    const newUser = await createUser({ email });
+
+    // 201 means "Created"
+    res.status(201).json(newUser);
   } catch (err) {
-    next(err); // pass the error to global error handler
+    next(err);
+  }
+};
+
+// create chirp handler
+const handlerCreateChirp = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { body, userId } = req.body;
+
+    // 1. Validation (Ported logic)
+    if (!body || body.length > 140) {
+      throw new ValidationError("Chirp is too long");
+    }
+
+    // 2. Censorship (Ported logic)
+    const badWords = ["kerfuffle", "sharbert", "fornax"];
+    const cleanedBody = body
+      .split(" ")
+      .map((word: string) => {
+        const lower = word.toLowerCase();
+        return badWords.includes(lower) ? "****" : word;
+      })
+      .join(" ");
+
+    // 3. Save to Database (using the cleaned body)
+    const newChirp = await createChirp({
+      body: cleanedBody,
+      userId: userId,
+    });
+
+    // 4. Respond with 201 Created
+    res.status(201).json(newChirp);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// get all chirps handler
+const handlerGetChirps = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const allChirps = await getAllChirps();
+    res.status(200).json(allChirps);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// get one chirp handler
+const handlerGetChirpById = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    // express puts dynamic parameters (like chirp_id) into req.params
+    const { chirp_id } = req.params;
+
+    // fetch from DB
+    const result = await getChirpById(chirp_id);
+
+    // if array is empty, the chirp doesn't exists
+    if (result.length === 0) {
+      throw new NotFoundError("Chirp not found");
+    }
+    res.status(200).json(result[0]);
+  } catch (err) {
+    next(err);
   }
 };
 
@@ -128,7 +223,10 @@ app.use("/app", express.static("./src/app"));
 
 // the API (moved to /api namespace)
 app.get("/api/healthz", handlerReadiness);
-app.post("/api/validate_chirp", handlerValidateChirp);
+app.post("/api/users", handlerCreateUser);
+app.post("/api/chirps", handlerCreateChirp);
+app.get("/api/chirps", handlerGetChirps);
+app.get("/api/chirps/:chirp_id", handlerGetChirpById);
 
 // the admin namespace
 app.get("/admin/metrics", handlerMetrics);

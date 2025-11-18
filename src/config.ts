@@ -3,6 +3,7 @@ process.loadEnvFile();
 export type APIConfig = {
   fileserverHits: number;
   dbURL: string;
+  platform: string;
 };
 
 //helper to ensure secrets exist
@@ -18,4 +19,5 @@ const envOrThrow = (key: string): string => {
 export const apiConfig: APIConfig = {
   fileserverHits: 0,
   dbURL: envOrThrow("DB_URL"),
+  platform: envOrThrow("PLATFORM"),
 };
