@@ -13,6 +13,7 @@ import {
   createUser,
   getUserByEmail,
   deleteAllUsers,
+  updateUser,
 } from "./db/queries/users.js";
 import {
   createChirp,
@@ -358,6 +359,45 @@ const handlerRevoke = async (
   }
 };
 
+const handlerUpdateUser = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    // 1. Validate Auth (Get User ID from Token)
+    const token = getBearerToken(req);
+    const userId = validateJWT(token, apiConfig.jwtSecret);
+
+    // 2. Parse Body
+    const { email, password } = req.body;
+    if (!email || !password) {
+      res.status(400).json({ error: "Email and password are required" });
+      return;
+    }
+
+    // 3. Hash New Password
+    const hashedPassword = await hashPassword(password);
+
+    // 4. Update Database
+    const updatedUser = await updateUser(userId, email, hashedPassword);
+
+    // 5. Sanitize & Respond
+    const { hashedPassword: _, ...userWithoutPassword } = updatedUser;
+    res.status(200).json(userWithoutPassword);
+  } catch (err) {
+    // Handle Auth errors as 401
+    if (
+      err instanceof Error &&
+      (err.message.includes("token") || err.message.includes("header"))
+    ) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    next(err);
+  }
+};
+
 // --- register routes ---
 // apply the increment middleware to the /app path FIRST
 // the website (remains at /app)
@@ -373,6 +413,7 @@ app.get("/api/chirps/:chirp_id", handlerGetChirpById);
 app.post("/api/login", handlerLogin);
 app.post("/api/refresh", handlerRefresh);
 app.post("/api/revoke", handlerRevoke);
+app.put("/api/users", handlerUpdateUser);
 
 // the admin namespace
 app.get("/admin/metrics", handlerMetrics);
