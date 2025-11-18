@@ -19,6 +19,7 @@ import {
   createChirp,
   getAllChirps,
   getChirpById,
+  deleteChirp,
 } from "./db/queries/chirps.js";
 
 import {
@@ -398,6 +399,54 @@ const handlerUpdateUser = async (
   }
 };
 
+const handlerDeleteChirp = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    // 1. Authenticate (Get User ID from Token)
+    const token = getBearerToken(req);
+    const userId = validateJWT(token, apiConfig.jwtSecret);
+
+    // 2. Get the Chirp ID from the URL
+    const { chirpID } = req.params;
+
+    // 3. Find the Chirp in the DB
+    const dbResult = await getChirpById(chirpID);
+    const chirp = dbResult[0];
+
+    // Check if it exists
+    if (!chirp) {
+      res.status(404).send(); // "Not Found"
+      return;
+    }
+
+    // 4. Authorize (Check Ownership)
+    // We compare the user ID from the token vs the user ID on the chirp
+    if (chirp.userId !== userId) {
+      res.status(403).send(); // "Forbidden"
+      return;
+    }
+
+    // 5. Delete
+    await deleteChirp(chirpID);
+
+    // 204 No Content (Success, but no body returned)
+    res.status(204).send();
+  } catch (err) {
+    // Standard Auth error handling
+    if (
+      err instanceof Error &&
+      (err.message.includes("token") || err.message.includes("header"))
+    ) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    next(err);
+  }
+};
+
 // --- register routes ---
 // apply the increment middleware to the /app path FIRST
 // the website (remains at /app)
@@ -414,6 +463,7 @@ app.post("/api/login", handlerLogin);
 app.post("/api/refresh", handlerRefresh);
 app.post("/api/revoke", handlerRevoke);
 app.put("/api/users", handlerUpdateUser);
+app.delete("api/users", handlerDeleteChirp);
 
 // the admin namespace
 app.get("/admin/metrics", handlerMetrics);
