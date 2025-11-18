@@ -222,25 +222,37 @@ const handlerCreateChirp = async (
   }
 };
 
-// updated handler that can return all chirps or chirps by an author
+// updated handler that can return all chirps or chirps by an author; sorting
 const handlerGetChirps = async (
   req: Request,
   res: Response,
   next: NextFunction,
 ) => {
   try {
-    // 1. Check for the query param "?authorId=..."
-    const { authorId } = req.query;
-
+    const { authorId, sort } = req.query;
     let dbResult;
 
-    // 2. If authorId exists AND is a string, filter by it
+    // 1. Fetch from DB (Existing Logic)
     if (typeof authorId === "string" && authorId.length > 0) {
       dbResult = await getChirpsByAuthorId(authorId);
     } else {
-      // 3. Otherwise, return everything (default behavior)
       dbResult = await getAllChirps();
     }
+
+    // 2. Determine Sort Direction
+    // Default to "asc" unless the user specifically asked for "desc"
+    const sortDirection = sort === "desc" ? "desc" : "asc";
+
+    // 3. Sort In-Memory
+    dbResult.sort((a, b) => {
+      if (sortDirection === "desc") {
+        // Descending: Newest first (Time B - Time A)
+        return b.createdAt.getTime() - a.createdAt.getTime();
+      } else {
+        // Ascending: Oldest first (Time A - Time B)
+        return a.createdAt.getTime() - b.createdAt.getTime();
+      }
+    });
 
     res.status(200).json(dbResult);
   } catch (err) {
