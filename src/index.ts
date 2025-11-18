@@ -21,11 +21,18 @@ import {
 } from "./db/queries/chirps.js";
 
 import {
+  createRefreshToken,
+  getRefreshToken,
+  revokeRefreshToken,
+} from "./db/queries/tokens.js";
+
+import {
   hashPassword,
   checkPasswordHash,
   makeJWT,
   getBearerToken,
   validateJWT,
+  makeRefreshToken,
 } from "./auth.js";
 
 const app = express();
@@ -254,42 +261,98 @@ const handlerLogin = async (
   next: NextFunction,
 ) => {
   try {
-    const { email, password, expiresInSeconds } = req.body; // Read optional expiration
+    const { email, password } = req.body;
+    const user = (await getUserByEmail(email))[0];
 
-    const usersList = await getUserByEmail(email);
-    const user = usersList[0];
-
-    if (!user) {
+    if (!user || !(await checkPasswordHash(password, user.hashedPassword))) {
       res.status(401).json({ error: "Incorrect email or password" });
       return;
     }
 
-    const isMatch = await checkPasswordHash(password, user.hashedPassword);
-    if (!isMatch) {
-      res.status(401).json({ error: "Incorrect email or password" });
-      return;
-    }
+    // 1. Create Access Token (JWT) - 1 Hour Fixed
+    const expiresInSeconds = 60 * 60;
+    const accessToken = makeJWT(user.id, expiresInSeconds, apiConfig.jwtSecret);
 
-    // --- NEW: Token Generation ---
+    // 2. Create Refresh Token - 60 Days
+    const refreshToken = makeRefreshToken();
+    const dbExpiresAt = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000); // 60 days in ms
 
-    // Default to 1 hour (3600s), cap at 1 hour max
-    const defaultExpiration = 60 * 60; // 1 hour
-    let expiration = expiresInSeconds || defaultExpiration;
+    await createRefreshToken(refreshToken, user.id, dbExpiresAt);
 
-    if (expiration > defaultExpiration) {
-      expiration = defaultExpiration;
-    }
-
-    // Create the token using the User's ID and your secret
-    const token = makeJWT(user.id, expiration, apiConfig.jwtSecret);
-
-    // Return User + Token
+    // 3. Return both
     const { hashedPassword: _, ...userWithoutPassword } = user;
-
     res.status(200).json({
       ...userWithoutPassword,
-      token: token,
+      token: accessToken,
+      refreshToken: refreshToken,
     });
+  } catch (err) {
+    next(err);
+  }
+};
+
+//handlerRefresh takes a refresh token and gives back a new access token
+const handlerRefresh = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    // 1. Get token from header
+    const refreshToken = getBearerToken(req);
+
+    // 2. Lookup in DB
+    const tokenRecord = await getRefreshToken(refreshToken);
+
+    // 3. Validation: Exists? Revoked? Expired?
+    if (!tokenRecord) {
+      res.status(401).json({ error: "Refresh token not found" });
+      return;
+    }
+    if (tokenRecord.revokedAt) {
+      res.status(401).json({ error: "Refresh token revoked" });
+      return;
+    }
+    if (new Date() > tokenRecord.expiresAt) {
+      res.status(401).json({ error: "Refresh token expired" });
+      return;
+    }
+
+    // 4. Issue NEW Access Token (1 hour)
+    const accessToken = makeJWT(
+      tokenRecord.userId,
+      60 * 60,
+      apiConfig.jwtSecret,
+    );
+
+    res.status(200).json({ token: accessToken });
+  } catch (err) {
+    // Map generic auth errors to 401
+    if (
+      err instanceof Error &&
+      (err.message.includes("header") || err.message.includes("token"))
+    ) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    next(err);
+  }
+};
+
+//handlerRevoke invalidates a specific refresh token (e.g., Logout)
+const handlerRevoke = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const refreshToken = getBearerToken(req);
+
+    // Update the DB record
+    await revokeRefreshToken(refreshToken);
+
+    // 204 No Content (Successful, but nothing to return)
+    res.status(204).send();
   } catch (err) {
     next(err);
   }
@@ -308,6 +371,8 @@ app.post("/api/chirps", handlerCreateChirp);
 app.get("/api/chirps", handlerGetChirps);
 app.get("/api/chirps/:chirp_id", handlerGetChirpById);
 app.post("/api/login", handlerLogin);
+app.post("/api/refresh", handlerRefresh);
+app.post("/api/revoke", handlerRevoke);
 
 // the admin namespace
 app.get("/admin/metrics", handlerMetrics);

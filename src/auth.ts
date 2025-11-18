@@ -1,6 +1,7 @@
 import argon2 from "argon2";
 import jwt from "jsonwebtoken";
 import { Request } from "express";
+import crypto from "crypto";
 
 export const hashPassword = async (password: string): Promise<string> => {
   return await argon2.hash(password);
@@ -64,4 +65,8 @@ export const getBearerToken = (req: Request): string => {
     throw new Error("Malformed authroization header");
   }
   return splitAuth[1];
+};
+
+export const makeRefreshToken = (): string => {
+  return crypto.randomBytes(32).toString("hex");
 };

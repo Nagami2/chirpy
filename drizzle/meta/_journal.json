@@ -22,6 +22,13 @@
       "when": 1763428186528,
       "tag": "0002_curious_famine",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1763479602594,
+      "tag": "0003_flippant_moira_mactaggert",
+      "breakpoints": true
     }
   ]
 }
