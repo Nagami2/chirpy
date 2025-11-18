@@ -70,3 +70,20 @@ export const getBearerToken = (req: Request): string => {
 export const makeRefreshToken = (): string => {
   return crypto.randomBytes(32).toString("hex");
 };
+
+export const getAPIKey = (req: Request): string => {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader) {
+    throw new Error("No authorization header");
+  }
+
+  // Expected format: "ApiKey f271c..."
+  const splitAuth = authHeader.split(" ");
+
+  if (splitAuth.length !== 2 || splitAuth[0] !== "ApiKey") {
+    throw new Error("Malformed authorization header");
+  }
+
+  return splitAuth[1];
+};

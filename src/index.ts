@@ -36,6 +36,7 @@ import {
   getBearerToken,
   validateJWT,
   makeRefreshToken,
+  getAPIKey,
 } from "./auth.js";
 
 const app = express();
@@ -454,6 +455,13 @@ const handlerPolkaWebhooks = async (
   next: NextFunction,
 ) => {
   try {
+    //securty check
+    const apiKey = getAPIKey(req);
+    if (apiKey !== apiConfig.polkaKey) {
+      res.status(401).send();
+      return;
+    }
+
     const { event, data } = req.body;
 
     // 1. Ignore irrelevant events
@@ -489,6 +497,13 @@ const handlerPolkaWebhooks = async (
       throw err;
     }
   } catch (err) {
+    if (
+      err instanceof Error &&
+      (err.message.includes("header") || err.message.includes("key"))
+    ) {
+      res.status(401).send();
+      return;
+    }
     next(err);
   }
 };

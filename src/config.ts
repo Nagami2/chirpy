@@ -5,6 +5,7 @@ export type APIConfig = {
   dbURL: string;
   platform: string;
   jwtSecret: string;
+  polkaKey: string;
 };
 
 //helper to ensure secrets exist
@@ -22,4 +23,5 @@ export const apiConfig: APIConfig = {
   dbURL: envOrThrow("DB_URL"),
   platform: envOrThrow("PLATFORM"),
   jwtSecret: envOrThrow("JWT_SECRET"),
+  polkaKey: envOrThrow("POLKA_KEY"),
 };
