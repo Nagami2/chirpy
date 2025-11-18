@@ -1,5 +1,6 @@
 import argon2 from "argon2";
 import jwt from "jsonwebtoken";
+import { Request } from "express";
 
 export const hashPassword = async (password: string): Promise<string> => {
   return await argon2.hash(password);
@@ -48,4 +49,19 @@ export const validateJWT = (tokenString: string, secret: string): string => {
     throw new Error("Invalid token payload: missing sub");
   }
   return decoded.sub;
+};
+
+export const getBearerToken = (req: Request): string => {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader) {
+    throw new Error("No authorization header");
+  }
+
+  // the header looks like: "Bearer eyhj...."
+  const splitAuth = authHeader.split(" ");
+  if (splitAuth.length !== 2 || splitAuth[0] !== "Bearer") {
+    throw new Error("Malformed authroization header");
+  }
+  return splitAuth[1];
 };

@@ -4,6 +4,7 @@ export type APIConfig = {
   fileserverHits: number;
   dbURL: string;
   platform: string;
+  jwtSecret: string;
 };
 
 //helper to ensure secrets exist
@@ -20,4 +21,5 @@ export const apiConfig: APIConfig = {
   fileserverHits: 0,
   dbURL: envOrThrow("DB_URL"),
   platform: envOrThrow("PLATFORM"),
+  jwtSecret: envOrThrow("JWT_SECRET"),
 };

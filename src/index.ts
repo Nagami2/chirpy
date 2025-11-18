@@ -20,7 +20,13 @@ import {
   getChirpById,
 } from "./db/queries/chirps.js";
 
-import { hashPassword, checkPasswordHash } from "./auth.js";
+import {
+  hashPassword,
+  checkPasswordHash,
+  makeJWT,
+  getBearerToken,
+  validateJWT,
+} from "./auth.js";
 
 const app = express();
 const PORT = 8080;
@@ -158,14 +164,21 @@ const handlerCreateChirp = async (
   next: NextFunction,
 ) => {
   try {
-    const { body, userId } = req.body;
+    const { body } = req.body; // We NO LONGER read 'userId' from the body
 
-    // 1. Validation (Ported logic)
+    // 1. Get Token
+    // This throws an error if header is missing, so it goes to catch block
+    const token = getBearerToken(req);
+
+    // 2. Validate Token & Extract User ID
+    // This throws if signature is wrong or expired
+    const validUserID = validateJWT(token, apiConfig.jwtSecret);
+
+    // 3. Validation (Same as before)
     if (!body || body.length > 140) {
       throw new ValidationError("Chirp is too long");
     }
 
-    // 2. Censorship (Ported logic)
     const badWords = ["kerfuffle", "sharbert", "fornax"];
     const cleanedBody = body
       .split(" ")
@@ -175,15 +188,24 @@ const handlerCreateChirp = async (
       })
       .join(" ");
 
-    // 3. Save to Database (using the cleaned body)
+    // 4. Create Chirp using the SECURE ID from the token
     const newChirp = await createChirp({
       body: cleanedBody,
-      userId: userId,
+      userId: validUserID, // Use the ID from the token!
     });
 
-    // 4. Respond with 201 Created
     res.status(201).json(newChirp);
   } catch (err) {
+    // If it's an auth error (token missing/invalid), we might want to return 401
+    // You can check err.message or just pass to global handler
+    // Ideally, you wrap the auth calls in a specific try/catch or use custom AuthError
+    if (
+      err instanceof Error &&
+      (err.message.includes("token") || err.message.includes("authorization"))
+    ) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
     next(err);
   }
 };
@@ -232,26 +254,42 @@ const handlerLogin = async (
   next: NextFunction,
 ) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, expiresInSeconds } = req.body; // Read optional expiration
 
-    // find the user
     const usersList = await getUserByEmail(email);
     const user = usersList[0];
 
-    // fail if user not found OR password validation fails
     if (!user) {
       res.status(401).json({ error: "Incorrect email or password" });
       return;
     }
-    // verify the password
+
     const isMatch = await checkPasswordHash(password, user.hashedPassword);
     if (!isMatch) {
       res.status(401).json({ error: "Incorrect email or password" });
       return;
     }
-    // success! return user without the hashPassword
+
+    // --- NEW: Token Generation ---
+
+    // Default to 1 hour (3600s), cap at 1 hour max
+    const defaultExpiration = 60 * 60; // 1 hour
+    let expiration = expiresInSeconds || defaultExpiration;
+
+    if (expiration > defaultExpiration) {
+      expiration = defaultExpiration;
+    }
+
+    // Create the token using the User's ID and your secret
+    const token = makeJWT(user.id, expiration, apiConfig.jwtSecret);
+
+    // Return User + Token
     const { hashedPassword: _, ...userWithoutPassword } = user;
-    res.status(200).json(userWithoutPassword);
+
+    res.status(200).json({
+      ...userWithoutPassword,
+      token: token,
+    });
   } catch (err) {
     next(err);
   }
