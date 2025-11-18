@@ -19,3 +19,11 @@ export async function getChirpById(id: string) {
 export async function deleteChirp(id: string) {
   await db.delete(chirps).where(eq(chirps.id, id));
 }
+
+export async function getChirpsByAuthorId(authorId: string) {
+  return await db
+    .select()
+    .from(chirps)
+    .where(eq(chirps.userId, authorId))
+    .orderBy(desc(chirps.createdAt));
+}

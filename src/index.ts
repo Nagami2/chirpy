@@ -21,6 +21,7 @@ import {
   getAllChirps,
   getChirpById,
   deleteChirp,
+  getChirpsByAuthorId,
 } from "./db/queries/chirps.js";
 
 import {
@@ -221,15 +222,27 @@ const handlerCreateChirp = async (
   }
 };
 
-// get all chirps handler
+// updated handler that can return all chirps or chirps by an author
 const handlerGetChirps = async (
   req: Request,
   res: Response,
   next: NextFunction,
 ) => {
   try {
-    const allChirps = await getAllChirps();
-    res.status(200).json(allChirps);
+    // 1. Check for the query param "?authorId=..."
+    const { authorId } = req.query;
+
+    let dbResult;
+
+    // 2. If authorId exists AND is a string, filter by it
+    if (typeof authorId === "string" && authorId.length > 0) {
+      dbResult = await getChirpsByAuthorId(authorId);
+    } else {
+      // 3. Otherwise, return everything (default behavior)
+      dbResult = await getAllChirps();
+    }
+
+    res.status(200).json(dbResult);
   } catch (err) {
     next(err);
   }
