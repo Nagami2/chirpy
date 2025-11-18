@@ -29,3 +29,18 @@ export async function updateUser(
     .returning();
   return updatedUser;
 }
+
+export async function getUserById(id: string) {
+  const result = await db.select().from(users).where(eq(users.id, id));
+  return result[0];
+}
+
+export async function upgradeUserToChirpyRed(id: string) {
+  //update the user and return the record so we know if it worked
+  const [updatedUser] = await db
+    .update(users)
+    .set({ isChirpyRed: true })
+    .where(eq(users.id, id))
+    .returning();
+  return updateUser;
+}

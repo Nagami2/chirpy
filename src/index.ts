@@ -14,6 +14,7 @@ import {
   getUserByEmail,
   deleteAllUsers,
   updateUser,
+  upgradeUserToChirpyRed,
 } from "./db/queries/users.js";
 import {
   createChirp,
@@ -447,6 +448,51 @@ const handlerDeleteChirp = async (
   }
 };
 
+const handlerPolkaWebhooks = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { event, data } = req.body;
+
+    // 1. Ignore irrelevant events
+    if (event !== "user.upgraded") {
+      res.status(204).send();
+      return;
+    }
+
+    // 2. Validate data structure (optional but good practice)
+    if (!data || !data.userId) {
+      // If data is missing, we technically can't process it.
+      // Polka expects 2xx to stop retrying, so 204 is safer than 400 here
+      // unless you want them to keep retrying a broken request.
+      res.status(204).send();
+      return;
+    }
+
+    // 3. Attempt to upgrade the user
+    try {
+      const upgradedUser = await upgradeUserToChirpyRed(data.userId);
+
+      // 4. Handle "User Not Found"
+      if (!upgradedUser) {
+        res.status(404).send();
+        return;
+      }
+
+      // 5. Success
+      res.status(204).send();
+    } catch (err) {
+      // If the DB ID format is invalid (not a UUID), it might throw.
+      // Polka will retry on 500s, which is what we want for transient DB errors.
+      throw err;
+    }
+  } catch (err) {
+    next(err);
+  }
+};
+
 // --- register routes ---
 // apply the increment middleware to the /app path FIRST
 // the website (remains at /app)
@@ -464,6 +510,7 @@ app.post("/api/refresh", handlerRefresh);
 app.post("/api/revoke", handlerRevoke);
 app.put("/api/users", handlerUpdateUser);
 app.delete("api/users", handlerDeleteChirp);
+app.post("/api/polka/webhooks", handlerPolkaWebhooks);
 
 // the admin namespace
 app.get("/admin/metrics", handlerMetrics);
