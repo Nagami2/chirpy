@@ -9,12 +9,18 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 
-import { createUser, deleteAllUsers } from "./db/queries/users.js";
+import {
+  createUser,
+  getUserByEmail,
+  deleteAllUsers,
+} from "./db/queries/users.js";
 import {
   createChirp,
   getAllChirps,
   getChirpById,
 } from "./db/queries/chirps.js";
+
+import { hashPassword, checkPasswordHash } from "./auth.js";
 
 const app = express();
 const PORT = 8080;
@@ -124,18 +130,22 @@ const handlerCreateUser = async (
   next: NextFunction,
 ) => {
   try {
-    const { email } = req.body;
+    const { email, password } = req.body;
     // Simple check to ensure email exists
-    if (!email) {
+    if (!email || !password) {
       // You can just respond with 400 or throw a ValidationError
-      res.status(400).json({ error: "Email is required" });
-      return;
+      throw new ValidationError("Email and password are required");
     }
 
-    const newUser = await createUser({ email });
+    const hashedPassword = await hashPassword(password);
 
-    // 201 means "Created"
-    res.status(201).json(newUser);
+    const newUser = await createUser({ email, hashedPassword });
+
+    // strip the password before returing
+    // we create a new object without the sensitive Database
+    const { hashedPassword: _, ...userWithoutPassword } = newUser;
+
+    res.status(201).json(userWithoutPassword);
   } catch (err) {
     next(err);
   }
@@ -215,6 +225,38 @@ const handlerGetChirpById = async (
   }
 };
 
+//login handler
+const handlerLogin = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { email, password } = req.body;
+
+    // find the user
+    const usersList = await getUserByEmail(email);
+    const user = usersList[0];
+
+    // fail if user not found OR password validation fails
+    if (!user) {
+      res.status(401).json({ error: "Incorrect email or password" });
+      return;
+    }
+    // verify the password
+    const isMatch = await checkPasswordHash(password, user.hashedPassword);
+    if (!isMatch) {
+      res.status(401).json({ error: "Incorrect email or password" });
+      return;
+    }
+    // success! return user without the hashPassword
+    const { hashedPassword: _, ...userWithoutPassword } = user;
+    res.status(200).json(userWithoutPassword);
+  } catch (err) {
+    next(err);
+  }
+};
+
 // --- register routes ---
 // apply the increment middleware to the /app path FIRST
 // the website (remains at /app)
@@ -227,6 +269,7 @@ app.post("/api/users", handlerCreateUser);
 app.post("/api/chirps", handlerCreateChirp);
 app.get("/api/chirps", handlerGetChirps);
 app.get("/api/chirps/:chirp_id", handlerGetChirpById);
+app.post("/api/login", handlerLogin);
 
 // the admin namespace
 app.get("/admin/metrics", handlerMetrics);
